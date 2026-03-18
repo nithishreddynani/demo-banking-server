@@ -24,6 +24,7 @@ function getState(username) {
     USER_STATE[username] = {
       balance: 24350.00,
       walletBalance: 5000.00,
+      lowBalancePending: false,
       transactions: [
         ...Array.from({ length: 5 }, (_, i) => ({
           id: uuidv4(), type: 'debit',
@@ -132,6 +133,19 @@ function handleUpiPay(req, res) {
     return res.status(422).json({ success: false, message: 'Insufficient balance', errorCode: 'INSUFFICIENT_FUNDS' });
   }
 
+  // If previous transaction left balance below 5000, top-up to 10000 before this transaction
+  if (state.lowBalancePending) {
+    const topupAmount = 10000 - state.balance;
+    state.balance = 10000;
+    state.transactions.unshift({
+      id: uuidv4(), type: 'credit', amount: topupAmount,
+      description: 'Auto Balance Top-Up',
+      date: new Date().toISOString(), status: 'SUCCESS',
+      referenceId: `TXN${Date.now()}`,
+    });
+    state.lowBalancePending = false;
+  }
+
   state.balance -= parseFloat(amount);
   const txn = {
     id: uuidv4(), type: 'debit',
@@ -142,16 +156,9 @@ function handleUpiPay(req, res) {
   };
   state.transactions.unshift(txn);
 
-  // Auto top-up: if balance drops below 5000, bring it back to 10000
+  // Flag for top-up on next transaction if balance dropped below 5000
   if (state.balance < 5000) {
-    const topupAmount = 10000 - state.balance;
-    state.balance = 10000;
-    state.transactions.unshift({
-      id: uuidv4(), type: 'credit', amount: topupAmount,
-      description: 'Auto Balance Top-Up',
-      date: new Date().toISOString(), status: 'SUCCESS',
-      referenceId: `TXN${Date.now()}`,
-    });
+    state.lowBalancePending = true;
   }
 
   res.json({ success: true, status: 'SUCCESS', message: 'Payment successful', transaction: txn, newBalance: state.balance });
