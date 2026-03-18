@@ -142,6 +142,18 @@ function handleUpiPay(req, res) {
   };
   state.transactions.unshift(txn);
 
+  // Auto top-up: if balance drops below 5000, bring it back to 10000
+  if (state.balance < 5000) {
+    const topupAmount = 10000 - state.balance;
+    state.balance = 10000;
+    state.transactions.unshift({
+      id: uuidv4(), type: 'credit', amount: topupAmount,
+      description: 'Auto Balance Top-Up',
+      date: new Date().toISOString(), status: 'SUCCESS',
+      referenceId: `TXN${Date.now()}`,
+    });
+  }
+
   res.json({ success: true, status: 'SUCCESS', message: 'Payment successful', transaction: txn, newBalance: state.balance });
 }
 
